@@ -477,6 +477,10 @@ const DAY_NUMS  = {Sunday:0,Monday:1,Tuesday:2,Wednesday:3,Thursday:4,Friday:5,S
 let charts = {};
 let lastMacroInput = {}; // track typing to avoid re-render race
 
+// Track last local write time per section — prevents Firebase from overwriting
+// edits with stale cloud data if a sync hasn't completed yet
+const localWriteTime = {};
+
 // ─── LOCAL STORAGE ────────────────────────────────────────────────────────────
 function lsGet(key,def){try{const v=localStorage.getItem(key);return v?JSON.parse(v):def;}catch{return def;}}
 function lsSet(key,val){try{localStorage.setItem(key,JSON.stringify(val));}catch{}}
@@ -494,14 +498,20 @@ function getMacros(p){
 
 // ─── FIREBASE SAVE (saves to localStorage instantly + Firestore async) ────────
 async function saveSection(p, section, data) {
+  const now = Date.now();
+  localWriteTime[p+'_'+section] = now;   // stamp this local write
   lsSet('fittrack_'+p+'_'+section, data);
   setSyncStatus('syncing');
   try {
-    await db.collection('fittrack').doc(p).set({[section]: data}, {merge: true});
+    await db.collection('fittrack').doc(p).set({
+      [section]: data,
+      [section+'_ts']: now               // save timestamp to Firestore too
+    }, {merge: true});
     setSyncStatus('synced');
   } catch(e) {
     console.warn('Firestore write failed, saved locally:', e);
     setSyncStatus('error');
+    showToast('Saved locally — sync failed');
   }
 }
 
@@ -540,11 +550,17 @@ function setupSync(p) {
     const data = snap.data();
     let changed = false;
 
-    if (data.workout) { lsSet('fittrack_'+p+'_workout', data.workout); changed = true; }
-    if (data.meals)   { lsSet('fittrack_'+p+'_meals',   data.meals);   changed = true; }
-    if (data.grocery) { lsSet('fittrack_'+p+'_grocery', data.grocery); changed = true; }
-    if (data.weight)  { lsSet('fittrack_'+p+'_weight',  data.weight);  changed = true; }
-    if (data.macros)  { lsSet('fittrack_'+p+'_macros',  data.macros);  changed = true; }
+    ['workout','meals','grocery','weight','macros'].forEach(sec => {
+      if (data[sec] === undefined) return;
+      const fsTs   = data[sec+'_ts'] || 0;
+      const localTs = localWriteTime[p+'_'+sec] || 0;
+      // Only apply if Firestore data is not older than our last local edit.
+      // This prevents a failed/delayed write from reverting user changes.
+      if (fsTs >= localTs) {
+        lsSet('fittrack_'+p+'_'+sec, data[sec]);
+        changed = true;
+      }
+    });
 
     setSyncStatus('synced');
 
