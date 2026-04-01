@@ -383,11 +383,9 @@ const DEFAULTS = {
   },
   meals:{
     breakfast:[
-      {name:'Egg Omelette (4 eggs) + 2 Multigrain Roti + Curd',macros:'P:32g · C:38g · F:14g',kcal:410},
-      {name:'Oats + Milk + Banana + Almonds',macros:'P:18g · C:58g · F:10g',kcal:400},
-      {name:'Poha + 2 Boiled Eggs + Green Chutney',macros:'P:22g · C:45g · F:10g',kcal:360},
-      {name:'Moong Dal Chilla (3) + Curd',macros:'P:24g · C:40g · F:6g',kcal:320},
-      {name:'Bread (2) + Peanut Butter + 3 Boiled Eggs',macros:'P:30g · C:42g · F:18g',kcal:450}
+      {name:'Moong Dal Chilla + Curd',macros:'P:20g · C:40g · F:12g',kcal:350},
+      {name:'Oats + Milk + Nuts',macros:'P:18g · C:48g · F:13g',kcal:380},
+      {name:'Eggs + Bread + Peanut Butter',macros:'P:22g · C:32g · F:20g',kcal:400}
     ],
     pre_workout:[
       {name:'Banana + Whey Protein Shake',macros:'P:25g · C:28g · F:2g',kcal:230},
@@ -397,11 +395,9 @@ const DEFAULTS = {
       {name:'Curd + Fruit + Honey',macros:'P:10g · C:30g · F:3g',kcal:188}
     ],
     lunch:[
-      {name:'Chicken Breast 150g + Brown Rice + Sabzi',macros:'P:45g · C:60g · F:10g',kcal:510},
-      {name:'Dal + 2 Roti + Salad + Curd',macros:'P:22g · C:58g · F:8g',kcal:400},
-      {name:'Fish Curry + Rice + Vegetables',macros:'P:40g · C:55g · F:12g',kcal:490},
-      {name:'Paneer Bhurji + 2 Roti + Dal',macros:'P:30g · C:50g · F:18g',kcal:480},
-      {name:'Egg Curry + Brown Rice + Salad',macros:'P:35g · C:52g · F:14g',kcal:470}
+      {name:'Roti + Dal + Salad',macros:'P:22g · C:72g · F:16g',kcal:520},
+      {name:'Rajma + Rice',macros:'P:20g · C:82g · F:16g',kcal:550},
+      {name:'Paneer Bhurji + Roti',macros:'P:25g · C:52g · F:26g',kcal:540}
     ],
     post_workout:[
       {name:'Whey Protein Shake + Banana',macros:'P:28g · C:30g · F:2g',kcal:250},
@@ -418,11 +414,9 @@ const DEFAULTS = {
       {name:'Sprouts Salad + Lemon',macros:'P:12g · C:28g · F:3g',kcal:188}
     ],
     dinner:[
-      {name:'Grilled Chicken + Sabzi + 1-2 Roti',macros:'P:42g · C:40g · F:12g',kcal:440},
-      {name:'Dal + 2 Roti + Salad + Curd',macros:'P:18g · C:50g · F:6g',kcal:330},
-      {name:'Fish Curry + Vegetables + Brown Rice',macros:'P:38g · C:45g · F:10g',kcal:430},
-      {name:'Egg Bhurji + 2 Roti + Salad',macros:'P:28g · C:42g · F:14g',kcal:410},
-      {name:'Chicken Soup + Multigrain Roti',macros:'P:35g · C:38g · F:8g',kcal:370}
+      {name:'Grilled Paneer + Veggies',macros:'P:28g · C:22g · F:31g',kcal:480},
+      {name:'Khichdi + Curd',macros:'P:18g · C:65g · F:13g',kcal:450},
+      {name:'Roti + Veg + Dal',macros:'P:20g · C:72g · F:15g',kcal:500}
     ],
     before_bed:[
       {name:'Warm Turmeric Milk',macros:'P:8g · C:12g · F:5g',kcal:125},
@@ -503,6 +497,8 @@ function setupSync(p) {
   const docRef = db.collection('fittrack').doc(p);
 
   // First open: if Firestore is empty, push defaults up
+  // Also force-update meals if version changed (e.g. spreadsheet updated)
+  const MEALS_VERSION = 'v2';
   docRef.get().then(snap => {
     if (!snap.exists) {
       docRef.set({
@@ -510,8 +506,18 @@ function setupSync(p) {
         meals: getMeals(p),
         grocery: getGrocery(p),
         weight: getWeights(p),
-        macros: getMacros(p)
+        macros: getMacros(p),
+        meals_version: MEALS_VERSION
       });
+    } else {
+      const data = snap.data();
+      if (data.meals_version !== MEALS_VERSION) {
+        // Spreadsheet was updated — push new meals to Firebase
+        docRef.set({
+          meals: JSON.parse(JSON.stringify(DEFAULTS.meals)),
+          meals_version: MEALS_VERSION
+        }, {merge: true});
+      }
     }
   }).catch(()=>{});
 
